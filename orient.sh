@@ -39,16 +39,31 @@ else
 fi
 
 # --- CI: what runs, and whether it last worked -------------------------------
-WFS=$(gh api "repos/$NWO/actions/workflows" \
-  --jq '[.workflows[] | select(.state=="active")][0:5][] | .name + " [" + (.path | sub(".*/";"")) + "]"' 2>/dev/null || true)
+# The workflows API includes stale registrations left over from deleted
+# branches; the contents API on the default branch is the truth. (Defect
+# found by flight record #3: a ghost workflow misled the arriving agent.)
+BRANCH_WF=$(gh api "repos/$NWO/contents/.github/workflows?ref=$DEF" --jq '.[].name' 2>/dev/null || true)
+WFS=""
+if [ -n "$BRANCH_WF" ]; then
+  ALL=$(gh api "repos/$NWO/actions/workflows" \
+    --jq '.workflows[] | select(.state=="active") | (.path | sub(".*/";"")) + "|" + .name' 2>/dev/null || true)
+  COUNT=0
+  while IFS='|' read -r file name; do
+    [ -z "$file" ] && continue
+    if [ "$COUNT" -lt 5 ] && printf '%s\n' "$BRANCH_WF" | grep -qxF "$file"; then
+      WFS="${WFS}           - $name [$file]"$'\n'
+      COUNT=$((COUNT+1))
+    fi
+  done <<< "$ALL"
+fi
 if [ -n "$WFS" ]; then
-  say "CI       workflows:"
-  while IFS= read -r wf; do say "           - $wf"; done <<< "$WFS"
+  say "CI       workflows on $DEF:"
+  printf '%s' "$WFS"
   LAST=$(gh api "repos/$NWO/actions/runs?per_page=1" \
     --jq '.workflow_runs[0] | .name + ": " + (.conclusion // .status)' 2>/dev/null || true)
   [ -n "$LAST" ] && say "         latest run — $LAST"
 else
-  say "CI       no workflows — your change will not be checked automatically; verify it yourself."
+  say "CI       no workflows on $DEF — your change will not be checked automatically; verify it yourself."
 fi
 
 # --- ENV: is setup declared, or must you discover it? ------------------------
