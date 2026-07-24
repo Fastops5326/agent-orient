@@ -16,6 +16,12 @@ set -uo pipefail
 
 say() { printf '%s\n' "$*"; }
 
+# gh api prints the ERROR BODY to stdout on HTTP failure, so a plain
+# $(gh api ... || true) capture swallows 403 JSON and presents it as data.
+# (Defect found by maximus flight record #2: WORK printed raw error JSON.)
+# api <args...> — echoes stdout only when the call succeeded; empty otherwise.
+api() { local out; if out=$(gh api "$@" 2>/dev/null); then printf '%s' "$out"; fi; }
+
 NWO=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true)
 if [ -z "$NWO" ]; then
   say "ORIENT: not inside a GitHub repo checkout, or gh is unauthenticated."
@@ -27,8 +33,8 @@ DEF=$(gh repo view --json defaultBranchRef --jq .defaultBranchRef.name 2>/dev/nu
 say "=== ORIENT $NWO (default: $DEF) $(date -u +%Y-%m-%dT%H:%MZ) ==="
 
 # --- GATES: what must be green before anything merges -----------------------
-CHECKS=$(gh api "repos/$NWO/rules/branches/$DEF" \
-  --jq '[.[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context] | unique | join(", ")' 2>/dev/null || true)
+CHECKS=$(api "repos/$NWO/rules/branches/$DEF" \
+  --jq '[.[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context] | unique | join(", ")')
 if [ -n "$CHECKS" ]; then
   say "GATES    required to merge into $DEF: $CHECKS"
   case "$CHECKS" in *plan-gate-status*)
@@ -42,11 +48,11 @@ fi
 # The workflows API includes stale registrations left over from deleted
 # branches; the contents API on the default branch is the truth. (Defect
 # found by flight record #3: a ghost workflow misled the arriving agent.)
-BRANCH_WF=$(gh api "repos/$NWO/contents/.github/workflows?ref=$DEF" --jq '.[].name' 2>/dev/null || true)
+BRANCH_WF=$(api "repos/$NWO/contents/.github/workflows?ref=$DEF" --jq '.[].name')
 WFS=""
 if [ -n "$BRANCH_WF" ]; then
-  ALL=$(gh api "repos/$NWO/actions/workflows" \
-    --jq '.workflows[] | select(.state=="active") | (.path | sub(".*/";"")) + "|" + .name' 2>/dev/null || true)
+  ALL=$(api "repos/$NWO/actions/workflows" \
+    --jq '.workflows[] | select(.state=="active") | (.path | sub(".*/";"")) + "|" + .name')
   COUNT=0
   while IFS='|' read -r file name; do
     [ -z "$file" ] && continue
@@ -59,8 +65,8 @@ fi
 if [ -n "$WFS" ]; then
   say "CI       workflows on $DEF:"
   printf '%s' "$WFS"
-  LAST=$(gh api "repos/$NWO/actions/runs?per_page=1" \
-    --jq '.workflow_runs[0] | select(.name != null) | .name + ": " + (.conclusion // .status)' 2>/dev/null || true)
+  LAST=$(api "repos/$NWO/actions/runs?per_page=1" \
+    --jq '.workflow_runs[0] | select(.name != null) | .name + ": " + (.conclusion // .status)')
   [ -n "$LAST" ] && say "         latest run — $LAST"
 else
   say "CI       no workflows on $DEF — your change will not be checked automatically; verify it yourself."
@@ -76,17 +82,16 @@ else
 fi
 
 # --- WORK: open issues and PRs (the live queue) -------------------------------
-ISSUES=$(gh api "repos/$NWO/issues?state=open&per_page=5" \
-  --jq '[.[] | select(has("pull_request") | not)][] | "#" + (.number|tostring) + " " + .title' 2>/dev/null)
-if [ -z "$ISSUES" ]; then
-  ISSUES_ERR=$(gh api "repos/$NWO/issues?state=open&per_page=1" 2>&1 >/dev/null || true)
-  case "$ISSUES_ERR" in
-    *403*|*404*) say "WORK     issues UNREADABLE from this token — treat your prompt as the complete work order." ;;
-    *)           say "WORK     no open issues." ;;
-  esac
+if ISSUES=$(gh api "repos/$NWO/issues?state=open&per_page=5" \
+  --jq '[.[] | select(has("pull_request") | not)][] | "#" + (.number|tostring) + " " + .title' 2>/dev/null); then
+  if [ -n "$ISSUES" ]; then
+    say "WORK     open issues:"
+    while IFS= read -r i; do say "           $i"; done <<< "$ISSUES"
+  else
+    say "WORK     no open issues."
+  fi
 else
-  say "WORK     open issues:"
-  while IFS= read -r i; do say "           $i"; done <<< "$ISSUES"
+  say "WORK     issues UNREADABLE from this token — treat your prompt as the complete work order."
 fi
 PRS=$(gh pr list --limit 5 --json number,title,mergeStateStatus \
   --jq '.[] | "#" + (.number|tostring) + " " + .title + " [" + .mergeStateStatus + "]"' 2>/dev/null || true)
