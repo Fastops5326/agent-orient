@@ -60,7 +60,7 @@ if [ -n "$WFS" ]; then
   say "CI       workflows on $DEF:"
   printf '%s' "$WFS"
   LAST=$(gh api "repos/$NWO/actions/runs?per_page=1" \
-    --jq '.workflow_runs[0] | .name + ": " + (.conclusion // .status)' 2>/dev/null || true)
+    --jq '.workflow_runs[0] | select(.name != null) | .name + ": " + (.conclusion // .status)' 2>/dev/null || true)
   [ -n "$LAST" ] && say "         latest run — $LAST"
 else
   say "CI       no workflows on $DEF — your change will not be checked automatically; verify it yourself."
