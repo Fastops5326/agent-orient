@@ -1,0 +1,44 @@
+name: Validate and release
+
+# Release-on-green: nobody remembers to move the v1 tag. A push to main that
+# passes validation IS the release. A push that fails validation leaves v1
+# where it was, so every consuming repo keeps fetching the last good version.
+# Rollback = revert the commit; the next green push re-releases.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Syntax check
+        run: bash -n orient.sh
+
+      - name: Live run against this repo (must exit 0, stay in budget)
+        run: |
+          set -euo pipefail
+          out=$(bash orient.sh)
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | head -n 1 | grep -q "=== ORIENT"
+          lines=$(printf '%s\n' "$out" | wc -l)
+          echo "output lines: $lines (budget 45)"
+          test "$lines" -le 45
+
+      - name: Move v1 tag (the release act, automated)
+        run: |
+          git config user.name "orient-release"
+          git config user.email "orient-release@users.noreply.github.com"
+          git tag -f v1
+          git push origin v1 --force
