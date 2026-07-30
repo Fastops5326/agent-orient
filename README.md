@@ -18,3 +18,13 @@ Design laws (enforced by construction, not convention):
 This repo is deliberately public and deliberately tiny: working-repo agents
 can read it but their tokens cannot write to it. Nothing here is sensitive —
 the script only queries the repo it runs in, using the caller's own auth.
+
+
+## Ridgeline cloud capability packs
+
+Working-repo contract for named cloud powers (Orient / Ship sites / App data / AI doors / Enclave ops) lives in `teamguy-ai`:
+
+https://github.com/Fastops5326/teamguy-ai/blob/master/docs/CLOUD-PACKS.md
+
+Fetch orientation here; escalate deploy/vendor access via that pack catalog — not via a human desktop login.
+
