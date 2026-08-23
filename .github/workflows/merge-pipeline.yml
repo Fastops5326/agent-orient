@@ -17,7 +17,7 @@ on:
     # auto-merge cannot arm on a draft - this re-run arms it once a human
     # marks the PR ready (found live 2026-07-24, maximus PR #6).
     types: [opened, labeled, unlabeled, synchronize, reopened, ready_for_review]
-    branches: [master]
+    branches: [master, main]
 
 concurrency:
   group: merge-pipeline-${{ github.event.pull_request.number }}
