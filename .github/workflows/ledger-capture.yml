@@ -12,14 +12,6 @@ name: Gate Ledger Capture
 # spend and no Telegram noise.
 
 on:
-  workflow_run:
-    workflows: ["Merge Pipeline", "Plan Pipeline"]
-    types: [completed]
-  issue_comment:
-    types: [created]
-  schedule:
-    - cron: '0 22 * * 0' # weekly curation digest (Sun ~5pm CT)
-    - cron: '0 8 * * *'  # nightly plan-sweep janitor (~3am CT)
   workflow_dispatch:
 
 # Serialize all ledger writes: queued, never interleaved. This (plus the
